@@ -1,4 +1,4 @@
-"""Feast feature repository for the Webook MLOps platform."""
+"""Feast feature repository for the Ibook MLOps platform."""
 
 from .features import (  # noqa: F401
     event,

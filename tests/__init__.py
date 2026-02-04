@@ -1,2 +1,2 @@
-"""Test suite for the Webook MLOps platform."""
+"""Test suite for the Ibook MLOps platform."""
 

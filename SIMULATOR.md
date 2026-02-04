@@ -5,7 +5,7 @@
 
 ## 🎯 Overview
 
-The **Webook Event Simulator** generates realistic ticketing scenarios to test the MLOps platform under various conditions including:
+The **Ibook Event Simulator** generates realistic ticketing scenarios to test the MLOps platform under various conditions including:
 - Normal operations
 - Flash sales (mega-events)
 - Fraud attacks
@@ -17,10 +17,10 @@ The **Webook Event Simulator** generates realistic ticketing scenarios to test t
 
 ## 📁 Project Structure Updates
 
-Add to existing `webook-mlops/` structure:
+Add to existing `ibook-mlops/` structure:
 
 ```
-webook-mlops/
+ibook-mlops/
 ├── simulator/
 │   ├── __init__.py
 │   ├── config.py                    # Simulator configuration
@@ -1114,7 +1114,7 @@ SCENARIOS = {
 
 @click.group()
 def cli():
-    """Webook MLOps Platform Simulator"""
+    """Ibook MLOps Platform Simulator"""
     pass
 
 @cli.command()
@@ -1221,7 +1221,7 @@ services:
     build:
       context: .
       dockerfile: simulator/Dockerfile
-    container_name: webook-simulator
+    container_name: ibook-simulator
     environment:
       ENVIRONMENT: local
       API_BASE_URL: http://bentoml-fraud-detection:3000
@@ -1242,7 +1242,7 @@ services:
     build:
       context: ./simulator
       dockerfile: Dockerfile.dashboard
-    container_name: webook-simulator-dashboard
+    container_name: ibook-simulator-dashboard
     ports:
       - "8501:8501"
     environment:
@@ -1274,15 +1274,15 @@ sim-start:
 	@echo "Dashboard: http://localhost:8501"
 
 sim-list:
-	@docker exec webook-simulator python -m simulator.cli list-scenarios
+	@docker exec ibook-simulator python -m simulator.cli list-scenarios
 
 sim-run:
 	@echo "Running scenario: $(scenario)"
-	@docker exec webook-simulator python -m simulator.cli run $(scenario)
+	@docker exec ibook-simulator python -m simulator.cli run $(scenario)
 
 sim-run-all:
 	@echo "Running all scenarios..."
-	@docker exec webook-simulator python -m simulator.cli run-all
+	@docker exec ibook-simulator python -m simulator.cli run-all
 
 sim-dashboard:
 	@open http://localhost:8501
@@ -1545,7 +1545,7 @@ make sim-dashboard
 
 ```bash
 # SSH into simulator container
-docker exec -it webook-simulator bash
+docker exec -it ibook-simulator bash
 
 # Run with custom parameters
 python -m simulator.cli run flash-sale --duration 30 --users 200000
@@ -1568,7 +1568,7 @@ Add to `.github/workflows/mlops-cicd.yml`:
       - name: Run simulator against staging
         run: |
           docker-compose -f docker-compose.simulator.yml up -d
-          docker exec webook-simulator python -m simulator.cli run-all --env staging
+          docker exec ibook-simulator python -m simulator.cli run-all --env staging
       
       - name: Check results
         run: |

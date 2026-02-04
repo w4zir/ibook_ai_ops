@@ -1,6 +1,6 @@
-## Webook MLOps Platform (Phase 1)
+## Ibook MLOps Platform (Phase 1)
 
-Production-grade MLOps platform for Webook (ticketing) designed to run locally via Docker Compose and later deploy to Kubernetes/GKE.
+Production-grade MLOps platform for Ibook (ticketing) designed to run locally via Docker Compose and later deploy to Kubernetes/GKE.
 
 ### What’s included in Phase 1
 

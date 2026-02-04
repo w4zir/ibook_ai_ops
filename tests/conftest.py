@@ -18,8 +18,8 @@ def minimal_local_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENVIRONMENT", "local")
     monkeypatch.setenv("POSTGRES_HOST", "localhost")
     monkeypatch.setenv("POSTGRES_PORT", "5432")
-    monkeypatch.setenv("POSTGRES_USER", "webook")
-    monkeypatch.setenv("POSTGRES_PASSWORD", "webook")
+    monkeypatch.setenv("POSTGRES_USER", "ibook")
+    monkeypatch.setenv("POSTGRES_PASSWORD", "ibook")
     monkeypatch.setenv("POSTGRES_AIRFLOW_DB", "airflow")
     monkeypatch.setenv("POSTGRES_MLFLOW_DB", "mlflow")
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 """
-Synthetic data generator for the Webook MLOps feature store.
+Synthetic data generator for the Ibook MLOps feature store.
 
 This script creates Parquet files under `data/processed/feast/` that are used
 by the Feast feature repository in `services/feast/feature_repo`.

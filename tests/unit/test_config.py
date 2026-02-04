@@ -34,12 +34,12 @@ def test_production_requires_bigquery_and_gcs(monkeypatch: pytest.MonkeyPatch, m
 def test_production_valid_when_required_fields_present(monkeypatch: pytest.MonkeyPatch, minimal_local_env):
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("FEAST_OFFLINE_STORE", "bigquery")
-    monkeypatch.setenv("FEAST_BIGQUERY_DATASET", "webook_mlops_feast")
-    monkeypatch.setenv("STORAGE_GCS_BUCKET", "webook-mlops-artifacts")
+    monkeypatch.setenv("FEAST_BIGQUERY_DATASET", "ibook_mlops_feast")
+    monkeypatch.setenv("STORAGE_GCS_BUCKET", "ibook-mlops-artifacts")
 
     cfg = load_config(env_file=None)
     assert cfg.environment == "production"
     assert cfg.feast.offline_store == "bigquery"
-    assert cfg.feast.bigquery_dataset == "webook_mlops_feast"
-    assert cfg.storage.gcs_bucket == "webook-mlops-artifacts"
+    assert cfg.feast.bigquery_dataset == "ibook_mlops_feast"
+    assert cfg.storage.gcs_bucket == "ibook-mlops-artifacts"
 

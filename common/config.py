@@ -11,8 +11,8 @@ from pydantic import BaseModel, Field, ValidationError, field_validator, model_v
 class PostgresConfig(BaseModel):
     host: str = Field(default="localhost")
     port: int = Field(default=5432, ge=1, le=65535)
-    user: str = Field(default="webook")
-    password: str = Field(default="webook")
+    user: str = Field(default="ibook")
+    password: str = Field(default="ibook")
 
     airflow_db: str = Field(default="airflow")
     mlflow_db: str = Field(default="mlflow")
@@ -129,8 +129,8 @@ def load_config(env_file: Optional[str] = None) -> AppConfig:
     postgres = PostgresConfig(
         host=_from_env("POSTGRES_", "HOST", "localhost") or "localhost",
         port=int(_from_env("POSTGRES_", "PORT", "5432") or "5432"),
-        user=_from_env("POSTGRES_", "USER", "webook") or "webook",
-        password=_from_env("POSTGRES_", "PASSWORD", "webook") or "webook",
+        user=_from_env("POSTGRES_", "USER", "ibook") or "ibook",
+        password=_from_env("POSTGRES_", "PASSWORD", "ibook") or "ibook",
         airflow_db=_from_env("POSTGRES_", "AIRFLOW_DB", "airflow") or "airflow",
         mlflow_db=_from_env("POSTGRES_", "MLFLOW_DB", "mlflow") or "mlflow",
     )

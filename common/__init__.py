@@ -1,2 +1,2 @@
-"""Shared utilities and configuration for the Webook MLOps platform."""
+"""Shared utilities and configuration for the Ibook MLOps platform."""
 

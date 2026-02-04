@@ -3,9 +3,9 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "webook-mlops"
+name = "ibook-mlops"
 version = "0.1.0"
-description = "Local-first MLOps platform skeleton for Webook (Phase 1)."
+description = "Local-first MLOps platform skeleton for Ibook (Phase 1)."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Proprietary" }

@@ -1,4 +1,4 @@
-project: webook_mlops
+project: ibook_mlops
 registry: data/processed/feast/registry.db
 provider: local
 

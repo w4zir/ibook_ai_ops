@@ -1,11 +1,11 @@
-# Webook MLOps Platform - Implementation Plan
+# Ibook MLOps Platform - Implementation Plan
 ## Optimized for Cursor AI / Claude Code
 
 ---
 
 ## 🎯 Project Overview
 
-**Goal:** Build a production-grade MLOps platform for Webook (Saudi Arabia's #1 ticketing platform) that can be developed locally and deployed to GKE.
+**Goal:** Build a production-grade MLOps platform for Ibook (Saudi Arabia's #1 ticketing platform) that can be developed locally and deployed to GKE.
 
 **Tech Stack:**
 - **Orchestration:** Docker Compose (local) → Kubernetes/GKE (production)
@@ -24,7 +24,7 @@
 ## 📁 Project Structure to Create
 
 ```
-webook-mlops/
+ibook-mlops/
 ├── .github/
 │   └── workflows/
 │       └── mlops-cicd.yml
@@ -166,7 +166,7 @@ webook-mlops/
 
 **AI Prompt for Cursor/Claude Code:**
 ```
-Create the base project structure for webook-mlops with all directories and 
+Create the base project structure for ibook-mlops with all directories and 
 __init__.py files. Generate .gitignore for Python, Docker, and Terraform.
 ```
 
@@ -871,7 +871,7 @@ Create operational runbooks for:
 When creating a new component, use this template:
 
 ```
-Create a [component type] for webook MLOps platform that:
+Create a [component type] for ibook MLOps platform that:
 
 Requirements:
 1. [Functional requirement 1]
@@ -993,15 +993,15 @@ make clean && make start
 ```bash
 # Solution
 # Check Redis password in .env.local
-docker logs webook-redis
-docker exec -it webook-redis redis-cli ping
+docker logs ibook-redis
+docker exec -it ibook-redis redis-cli ping
 ```
 
 **Issue:** MLflow artifacts not saving
 ```bash
 # Solution
 # Verify MinIO is running and bucket exists
-docker exec -it webook-minio mc ls local/
+docker exec -it ibook-minio mc ls local/
 ```
 
 **Issue:** BentoML can't load model
@@ -1016,7 +1016,7 @@ curl http://localhost:5000/api/2.0/mlflow/registered-models/list
 ```bash
 # Solution
 # Check Airflow logs
-docker logs webook-airflow-scheduler
+docker logs ibook-airflow-scheduler
 # Manually trigger DAG
 curl -X POST http://localhost:8080/api/v1/dags/{dag_id}/dagRuns \
   -u admin:admin -H "Content-Type: application/json" -d '{}'

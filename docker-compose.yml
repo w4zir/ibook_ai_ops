@@ -1,12 +1,12 @@
-name: webook-mlops
+name: ibook-mlops
 
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: webook-postgres
+    container_name: ibook-postgres
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-webook}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-webook}
+      POSTGRES_USER: ${POSTGRES_USER:-ibook}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ibook}
       POSTGRES_DB: postgres
     ports:
       - "5432:5432"
@@ -21,7 +21,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: webook-redis
+    container_name: ibook-redis
     command: ["sh", "-c", "redis-server --appendonly yes ${REDIS_PASSWORD:+--requirepass $REDIS_PASSWORD}"]
     ports:
       - "6379:6379"
@@ -35,7 +35,7 @@ services:
 
   minio:
     image: minio/minio:RELEASE.2025-01-20T14-49-07Z
-    container_name: webook-minio
+    container_name: ibook-minio
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
@@ -53,7 +53,7 @@ services:
 
   minio-init:
     image: minio/mc:RELEASE.2025-01-18T07-30-18Z
-    container_name: webook-minio-init
+    container_name: ibook-minio-init
     depends_on:
       minio:
         condition: service_healthy
@@ -74,7 +74,7 @@ services:
     build:
       context: .
       dockerfile: services/mlflow/Dockerfile
-    container_name: webook-mlflow
+    container_name: ibook-mlflow
     depends_on:
       postgres:
         condition: service_healthy
@@ -84,20 +84,20 @@ services:
       AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY:-minioadmin}
       AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       MLFLOW_S3_ENDPOINT_URL: ${MINIO_ENDPOINT:-http://minio:9000}
-      MLFLOW_BACKEND_STORE_URI: postgresql+psycopg2://${POSTGRES_USER:-webook}:${POSTGRES_PASSWORD:-webook}@postgres:5432/${POSTGRES_MLFLOW_DB:-mlflow}
+      MLFLOW_BACKEND_STORE_URI: postgresql+psycopg2://${POSTGRES_USER:-ibook}:${POSTGRES_PASSWORD:-ibook}@postgres:5432/${POSTGRES_MLFLOW_DB:-mlflow}
       MLFLOW_DEFAULT_ARTIFACT_ROOT: s3://${MINIO_BUCKET:-mlflow}/
     ports:
       - "5000:5000"
 
   airflow-webserver:
     image: apache/airflow:2.8.1
-    container_name: webook-airflow-webserver
+    container_name: ibook-airflow-webserver
     depends_on:
       postgres:
         condition: service_healthy
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-webook}:${POSTGRES_PASSWORD:-webook}@postgres:5432/${POSTGRES_AIRFLOW_DB:-airflow}
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-ibook}:${POSTGRES_PASSWORD:-ibook}@postgres:5432/${POSTGRES_AIRFLOW_DB:-airflow}
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       _AIRFLOW_WWW_USER_USERNAME: admin
       _AIRFLOW_WWW_USER_PASSWORD: admin
@@ -111,19 +111,19 @@ services:
 
   airflow-scheduler:
     image: apache/airflow:2.8.1
-    container_name: webook-airflow-scheduler
+    container_name: ibook-airflow-scheduler
     depends_on:
       airflow-webserver:
         condition: service_started
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-webook}:${POSTGRES_PASSWORD:-webook}@postgres:5432/${POSTGRES_AIRFLOW_DB:-airflow}
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-ibook}:${POSTGRES_PASSWORD:-ibook}@postgres:5432/${POSTGRES_AIRFLOW_DB:-airflow}
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     command: ["bash", "-c", "airflow scheduler"]
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.0
-    container_name: webook-zookeeper
+    container_name: ibook-zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -132,7 +132,7 @@ services:
 
   kafka:
     image: confluentinc/cp-kafka:7.6.0
-    container_name: webook-kafka
+    container_name: ibook-kafka
     depends_on:
       - zookeeper
     ports:
@@ -146,7 +146,7 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.49.1
-    container_name: webook-prometheus
+    container_name: ibook-prometheus
     ports:
       - "9090:9090"
     volumes:
@@ -154,7 +154,7 @@ services:
 
   grafana:
     image: grafana/grafana:10.3.1
-    container_name: webook-grafana
+    container_name: ibook-grafana
     ports:
       - "3000:3000"
     volumes:
@@ -164,7 +164,7 @@ services:
     build:
       context: .
       dockerfile: services/jupyter/Dockerfile
-    container_name: webook-jupyter
+    container_name: ibook-jupyter
     ports:
       - "8888:8888"
     volumes:
