@@ -1,0 +1,12 @@
+project: webook_mlops
+registry: data/processed/feast/registry.db
+provider: local
+
+online_store:
+  type: redis
+  connection_string: "redis://localhost:6379/0"
+
+offline_store:
+  type: duckdb
+  path: data/processed/feast_offline.duckdb
+

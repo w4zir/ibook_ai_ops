@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Virtualenvs
+.venv/
+venv/
+ENV/
+
+# Environment files (keep examples committed)
+.env
+.env.*
+!.env.local
+!.env.production.example
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Docker
+**/*.log
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+
+# Data/artifacts (keep directories, ignore contents)
+data/raw/*
+data/processed/*
+data/models/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/models/.gitkeep
+
