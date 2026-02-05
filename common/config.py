@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal, Optional
 
 from dotenv import load_dotenv
@@ -99,9 +100,20 @@ def _load_env(env_file: Optional[str]) -> None:
     # Load env file if present; do not override explicit process environment.
     if env_file:
         load_dotenv(env_file, override=False)
-    else:
-        # Fall back to .env.local if it exists.
-        load_dotenv(".env.local", override=False)
+        return
+
+    # When running from subdirectories (e.g. notebooks/), search upwards for
+    # a project-level `.env.local` so notebooks and scripts pick up the same
+    # config as the repo root.
+    cwd = Path.cwd()
+    for base in (cwd, *cwd.parents):
+        candidate = base / ".env.local"
+        if candidate.exists():
+            load_dotenv(candidate, override=False)
+            return
+
+    # Fallback to the original behaviour (local `.env.local` if present).
+    load_dotenv(".env.local", override=False)
 
 
 def _from_env(prefix: str, key: str, default: Optional[str] = None) -> Optional[str]:
