@@ -94,7 +94,8 @@ class EventGenerator:
         if category is None:
             categories = list(config.event_categories_distribution.keys())
             probs = list(config.event_categories_distribution.values())
-            category = np.random.choice(categories, p=probs)
+            idx = np.random.choice(len(categories), p=probs)
+            category = categories[idx]
 
         templates = self.event_templates.get(category, self.event_templates[EventCategory.CONCERT])
         template = random.choice(templates)

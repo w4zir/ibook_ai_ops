@@ -5,7 +5,7 @@
 
 ## 🎯 Project Overview
 
-**Goal:** Build a production-grade MLOps platform for Ibook (Saudi Arabia's #1 ticketing platform) that can be developed locally and deployed to GKE.
+**Goal:** Build a production-grade MLOps platform for Ibook (a ticketing platform) that can be developed locally and deployed to GKE.
 
 **Tech Stack:**
 - **Orchestration:** Docker Compose (local) → Kubernetes/GKE (production)

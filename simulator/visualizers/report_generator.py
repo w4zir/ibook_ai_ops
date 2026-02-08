@@ -54,12 +54,21 @@ def _create_error_chart(results: Dict[str, Any]) -> str:
         return f"<p>Error rate: {error_rate:.2f}%</p>"
 
 
+def _fraud_display(results: Dict[str, Any]) -> tuple[float, str]:
+    """Return (value as percentage 0-100, label) for the fraud metric to show."""
+    if "fraud_precision" in results:
+        return (float(results["fraud_precision"]) * 100, "Fraud Precision")
+    if "fraud_recall" in results:
+        return (float(results["fraud_recall"]) * 100, "Fraud Recall")
+    return (float(results.get("fraud_detected_pct", 0)), "Fraud Detected")
+
+
 def _create_fraud_chart(results: Dict[str, Any]) -> str:
-    fraud_detected = results.get("fraud_detected_pct", 0)
+    fraud_pct, fraud_label = _fraud_display(results)
     try:
         import plotly.graph_objs as go
         fig = go.Figure(
-            data=[go.Bar(x=["Detected"], y=[fraud_detected], marker_color="green")]
+            data=[go.Bar(x=[fraud_label], y=[fraud_pct], marker_color="green")]
         )
         fig.update_layout(
             title="Fraud Detection Rate",
@@ -67,7 +76,7 @@ def _create_fraud_chart(results: Dict[str, Any]) -> str:
         )
         return fig.to_html(include_plotlyjs="cdn", div_id="fraud-chart")
     except ImportError:
-        return f"<p>Fraud detected: {fraud_detected:.0f}%</p>"
+        return f"<p>{fraud_label}: {fraud_pct:.0f}%</p>"
 
 
 TEMPLATE_STR = """
@@ -111,8 +120,8 @@ TEMPLATE_STR = """
             <div>Peak RPS</div>
         </div>
         <div class="metric-card">
-            <div class="metric-value">{{ "%.0f"|format(metric_results.get('fraud_detected_pct', 0)) }}%</div>
-            <div>Fraud Detected</div>
+            <div class="metric-value">{{ "%.1f"|format(fraud_metric_value) }}%</div>
+            <div>{{ fraud_metric_label }}</div>
         </div>
     </div>
     <div class="chart-container">{{ charts.latency|safe }}</div>
@@ -148,6 +157,7 @@ class ReportGenerator:
         metric_results = getattr(scenario, "results", {})
         passed = results.get("passed", False)
         failures = results.get("failures", [])
+        fraud_metric_value, fraud_metric_label = _fraud_display(metric_results)
         charts = {
             "latency": _create_latency_chart(metric_results),
             "throughput": _create_throughput_chart(metric_results),
@@ -163,6 +173,8 @@ class ReportGenerator:
                 passed=passed,
                 failures=failures,
                 metric_results=metric_results,
+                fraud_metric_value=fraud_metric_value,
+                fraud_metric_label=fraud_metric_label,
                 charts=charts,
             )
         else:

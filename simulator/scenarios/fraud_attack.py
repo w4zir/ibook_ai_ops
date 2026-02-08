@@ -66,6 +66,9 @@ class FraudAttackScenario(BaseScenario):
         attack_txns = self.fraud_sim.generate_mixed_attack(
             self.event, self.users, duration_seconds=30, attacks_per_second=5
         )
+        num_attacks = len(attack_txns)
+        self.results["fraud_attacks_count"] = num_attacks
+        logger.info("Fraud attacks added in scenario: %d", num_attacks)
         responses = [_synthetic_fraud_response(t) for t in attack_txns]
         for i, t in enumerate(attack_txns):
             responses[i]["is_fraud"] = t.get("is_fraud", True)
