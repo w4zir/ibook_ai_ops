@@ -187,7 +187,11 @@ def realtime(scenario_name: str, duration: int, rps: float, output: str) -> None
         click.echo("Realtime mode uses normal-traffic generators for mix; use normal-traffic for mixed-style data.")
         scenario_class = SCENARIOS["normal-traffic"]
     click.echo(f"\nRealtime: {scenario_name} (duration={duration}s, rps={rps})")
-    runner = RealtimeRunner(scenario_class=scenario_class, duration_seconds=duration, rps=rps)
+    runner = RealtimeRunner(
+        scenario_class=scenario_class,
+        duration_seconds=duration,
+        rps=rps,
+    )
     results = runner.run()
     click.echo(f"Completed: {len(results.get('responses', []))} transactions, peak_rps={results.get('peak_rps', 0):.0f}")
     Path(output).parent.mkdir(parents=True, exist_ok=True)

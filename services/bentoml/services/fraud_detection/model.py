@@ -5,7 +5,7 @@ Pydantic models and thin wrappers for the fraud detection BentoML service.
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -21,8 +21,18 @@ class FraudRequest(BaseModel):
     feature values in `feature_overrides`.
     """
 
-    user_id: int = Field(..., description="User identifier.")
-    event_id: int = Field(..., description="Event identifier.")
+    # NOTE: Upstream systems may represent identifiers either as opaque strings
+    # (for example ``\"user_221f1d1b\"``) or as integers. To keep the BentoML
+    # schema compatible with both the simulator and potential numeric callers,
+    # we accept both types here.
+    user_id: Union[str, int] = Field(
+        ...,
+        description="User identifier (string or int).",
+    )
+    event_id: Union[str, int] = Field(
+        ...,
+        description="Event identifier (string or int).",
+    )
     amount: float = Field(..., ge=0, description="Transaction amount.")
     feature_overrides: Optional[Dict[str, float]] = Field(
         default=None,

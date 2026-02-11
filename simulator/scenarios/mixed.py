@@ -128,4 +128,15 @@ class MixedScenario(BaseScenario):
         self.results["error_rate"] = len(errors) / len(responses)
         duration_sec = self.results.get("duration_seconds", 1)
         self.results["peak_rps"] = len(responses) / duration_sec
-        logger.info("Mixed teardown: %d responses, error_rate=%.3f", len(responses), self.results["error_rate"])
+        timeouts = [
+            r
+            for r in responses
+            if r.get("timed_out") or r.get("error") == "timeout"
+        ]
+        self.results["timeout_count"] = len(timeouts)
+        logger.info(
+            "Mixed teardown: %d responses, error_rate=%.3f, timeout_count=%d",
+            len(responses),
+            self.results["error_rate"],
+            self.results["timeout_count"],
+        )

@@ -102,3 +102,9 @@ class FraudAttackScenario(BaseScenario):
             self.results["fraud_precision"] = true_positives / len(blocked)
         else:
             self.results["fraud_precision"] = 0
+        timeouts = [
+            r
+            for r in responses
+            if r.get("timed_out") or r.get("error") == "timeout"
+        ]
+        self.results["timeout_count"] = len(timeouts)

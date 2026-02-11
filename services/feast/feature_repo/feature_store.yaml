@@ -5,7 +5,7 @@ provider: local
 
 online_store:
   type: redis
-  connection_string: "redis://localhost:6379/0"
+  connection_string: "localhost:6379"
 
 offline_store:
   type: duckdb

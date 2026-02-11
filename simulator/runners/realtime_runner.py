@@ -41,11 +41,15 @@ class RealtimeRunner:
         duration_seconds: int = 60,
         rps: float = 100,
         api_base_url: str | None = None,
+        fraud_api_base_url: str | None = None,
     ) -> None:
         self.scenario_class = scenario_class or NormalTrafficScenario
         self.duration_seconds = duration_seconds
         self.rps = max(0.1, rps)
+        # Keep api_base_url for backwards compatibility / future use.
         self.api_base_url = (api_base_url or config.api_base_url).rstrip("/")
+        # Dedicated fraud API base URL pointing at BentoML fraud detection.
+        self.fraud_api_base_url = (fraud_api_base_url or config.fraud_api_base_url).rstrip("/")
         self.results: Dict[str, Any] = {}
         self._scenario: BaseScenario | None = None
 
@@ -95,11 +99,16 @@ class RealtimeRunner:
             except Exception as e:
                 logger.debug("Request failed: %s", e)
                 resp = _synthetic_response(txn)
-                resp["status"] = 500
+                # Use a synthetic status code to indicate network/transport failure.
+                resp["status"] = 599
+                resp["error"] = "transport_error"
+                resp["timed_out"] = True
                 errors += 1
             resp["is_fraud"] = txn.get("is_fraud", False)
             responses.append(resp)
-            if resp.get("status", 200) >= 400:
+            status = int(resp.get("status", 200))
+            # Treat any non-2xx status as an error (including timeouts/transport failures).
+            if status < 200 or status >= 300:
                 errors += 1
             next_send += interval
             if now - last_print >= 1.0:
@@ -128,29 +137,79 @@ class RealtimeRunner:
             self.results["peak_rps"] = len(responses) / elapsed_total
         return self.results
 
+    def _build_fraud_payload(self, transaction: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Build a FraudBatchRequest-compatible payload from a simulator transaction.
+
+        The BentoML fraud detection service expects:
+            {
+                "requests": [
+                    {
+                        "user_id": int,
+                        "event_id": int,
+                        "amount": float,
+                        "feature_overrides": { ... } | null
+                    }
+                ]
+            }
+        """
+        user_id = transaction.get("user_id")
+        event_id = transaction.get("event_id")
+        # Use total_amount as the transaction amount sent to the fraud model.
+        amount = float(transaction.get("total_amount", 0.0))
+        feature_overrides = transaction.get("feature_overrides")
+        request = {
+            "user_id": user_id,
+            "event_id": event_id,
+            "amount": amount,
+        }
+        if feature_overrides is not None:
+            request["feature_overrides"] = feature_overrides
+        return {"requests": [request]}
+
     def _send_request(self, transaction: Dict[str, Any]) -> Dict[str, Any]:
-        """Send one transaction to API or return synthetic response."""
+        """Send one transaction to the BentoML fraud API or return synthetic response."""
         try:
             import json
+            import socket
+            import urllib.error
             import urllib.request
+
+            payload = self._build_fraud_payload(transaction)
             req = urllib.request.Request(
-                f"{self.api_base_url}/predict",
-                data=json.dumps(transaction).encode("utf-8"),
+                f"{self.fraud_api_base_url}/predict",
+                data=json.dumps(payload).encode("utf-8"),
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
             t0 = time.perf_counter()
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                body = resp.read().decode()
-            latency_ms = (time.perf_counter() - t0) * 1000
-            data = json.loads(body) if body else {}
-            status = getattr(resp, "status", 200)
-            return {
-                "status": status,
-                "latency_ms": latency_ms,
-                "fraud_score": data.get("fraud_score", 0),
-                "blocked": data.get("fraud_score", 0) > 0.7,
-                "is_fraud": transaction.get("is_fraud", False),
-            }
+            try:
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    body = resp.read().decode()
+                    status = getattr(resp, "status", 200)
+                latency_ms = (time.perf_counter() - t0) * 1000
+                data = json.loads(body) if body else {}
+                # Expect a FraudBatchResponse-like payload: {"predictions": [{...}]}
+                predictions = data.get("predictions") or []
+                first = predictions[0] if predictions else {}
+                fraud_score = float(first.get("fraud_score", 0.0))
+                predicted_is_fraud = bool(first.get("is_fraud", fraud_score >= 0.7))
+                return {
+                    "status": status,
+                    "latency_ms": latency_ms,
+                    "fraud_score": fraud_score,
+                    "blocked": fraud_score > 0.7,
+                    # Ground-truth label is attached in run(); keep prediction as separate flag.
+                    "predicted_is_fraud": predicted_is_fraud,
+                }
+            except (socket.timeout, urllib.error.URLError) as _e:
+                # Treat network and timeout failures as transport-level errors.
+                resp = _synthetic_response(transaction)
+                resp["status"] = 599
+                resp["error"] = "transport_error"
+                resp["timed_out"] = True
+                return resp
         except Exception:
+            # On unexpected exceptions, fall back to a synthetic non-error response so that
+            # the simulator can still make progress; the caller will treat non-2xx as errors.
             return _synthetic_response(transaction)

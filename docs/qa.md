@@ -12,3 +12,7 @@
 
 **A:** Every generated transaction in realtime mode is posted to the configured `API_BASE_URL/predict` endpoint for fraud scoring, and the simulator falls back to a synthetic response only if the HTTP call fails. Dynamic pricing, however, is simulated locally inside the transaction generator and is not currently calling a separate BentoML pricing endpoint.
 
+### Q: What’s the difference between Peak RPS, txns, error rate in the HTML report and the `errors=` counter printed in the terminal?
+
+**A:** The **HTML report metrics** are computed *after* the scenario finishes, from the full list of recorded responses: **Peak RPS** is `total_responses ÷ duration_seconds`, **txns**/transaction counts come from the stored `responses` array, and **error rate** is `(#responses with status ≥ 400) ÷ total_responses`. The **`errors=` counter in the terminal** is a *live, running tally* of how many requests have seen an error so far (HTTP status ≥ 400 or a request failure) during execution; it is useful for real‑time feedback but is not the final, normalized metric used in the report.
+

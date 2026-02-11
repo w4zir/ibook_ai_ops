@@ -90,6 +90,10 @@ class FlashSaleScenario(BaseScenario):
         except Exception:
             out = _synthetic_response(transaction)
             out["latency_ms"] = out.get("latency_ms", 50)
+            # Network/timeout failures are treated as timeouts for reporting.
+            out["status"] = 504
+            out["error"] = "timeout"
+            out["timed_out"] = True
             return out
 
     async def _generate_traffic_wave(
@@ -187,4 +191,10 @@ class FlashSaleScenario(BaseScenario):
             ) * 100
         else:
             self.results["fraud_detected_pct"] = 0
+        timeouts = [
+            r
+            for r in responses
+            if r.get("timed_out") or r.get("error") == "timeout"
+        ]
+        self.results["timeout_count"] = len(timeouts)
         logger.info("Results: %s", self.results)

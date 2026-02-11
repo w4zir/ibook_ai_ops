@@ -1,5 +1,6 @@
 """Simulator configuration - event types, user personas, traffic patterns, SLAs."""
 
+import os
 from enum import Enum
 from typing import Any, Dict, List
 
@@ -148,7 +149,10 @@ class SimulatorConfig(BaseModel):
     """Master configuration for simulator."""
 
     environment: str = "local"
-    api_base_url: str = "http://localhost:3001"
+    # Legacy API base URL; kept for backwards compatibility.
+    api_base_url: str = Field(default_factory=lambda: os.getenv("SIMULATOR_API_BASE_URL", "http://localhost:3001"))
+    # Dedicated BentoML fraud detection API base URL.
+    fraud_api_base_url: str = Field(default_factory=lambda: os.getenv("FRAUD_API_BASE_URL", "http://localhost:7001"))
 
     event_categories_distribution: Dict[EventCategory, float] = Field(
         default_factory=lambda: {
@@ -193,6 +197,5 @@ class SimulatorConfig(BaseModel):
             "recommendation_ctr": 0.15,
         }
     )
-
 
 config = SimulatorConfig()

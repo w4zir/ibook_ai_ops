@@ -87,7 +87,7 @@ TEMPLATE_STR = """
     <style>
         body { font-family: Arial, sans-serif; margin: 40px; }
         .header { background: #2c3e50; color: white; padding: 20px; border-radius: 5px; }
-        .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin: 20px 0; }
+        .metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; margin: 20px 0; }
         .metric-card { background: #ecf0f1; padding: 20px; border-radius: 5px; text-align: center; }
         .metric-value { font-size: 2em; font-weight: bold; color: #3498db; }
         .status-pass { color: #27ae60; }
@@ -118,6 +118,10 @@ TEMPLATE_STR = """
         <div class="metric-card">
             <div class="metric-value">{{ "%.0f"|format(metric_results.get('peak_rps', 0)) }}</div>
             <div>Peak RPS</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-value">{{ metric_results.get('timeout_count', 0) }}</div>
+            <div>Timeout Count</div>
         </div>
         <div class="metric-card">
             <div class="metric-value">{{ "%.1f"|format(fraud_metric_value) }}%</div>
@@ -156,7 +160,11 @@ class ReportGenerator:
         """Generate HTML report. results is the validation dict from scenario.execute()."""
         metric_results = getattr(scenario, "results", {})
         passed = results.get("passed", False)
-        failures = results.get("failures", [])
+        failures = list(results.get("failures", []))
+        timeout_count = metric_results.get("timeout_count")
+        if isinstance(timeout_count, (int, float)) and timeout_count > 0:
+            failures.append(f"timeouts: expected 0, got {int(timeout_count)}")
+            passed = False
         fraud_metric_value, fraud_metric_label = _fraud_display(metric_results)
         charts = {
             "latency": _create_latency_chart(metric_results),

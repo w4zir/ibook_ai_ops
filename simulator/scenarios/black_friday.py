@@ -81,3 +81,9 @@ class BlackFridayScenario(BaseScenario):
         self.results["error_rate"] = len(errors) / len(responses)
         duration = self.results.get("duration_seconds", 1)
         self.results["peak_rps"] = len(responses) / duration
+        timeouts = [
+            r
+            for r in responses
+            if r.get("timed_out") or r.get("error") == "timeout"
+        ]
+        self.results["timeout_count"] = len(timeouts)

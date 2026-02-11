@@ -229,6 +229,9 @@ services:
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-local}
       MLFLOW_TRACKING_URI: http://mlflow:5000
+      AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
       REDIS_HOST: redis
       REDIS_PORT: 6379
     ports:

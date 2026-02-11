@@ -7,6 +7,7 @@ These utilities are intentionally small and thin wrappers around Feast so that
 they are easy to unit test and mock in higher-level components.
 """
 
+import os
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -35,9 +36,28 @@ def get_feature_store(repo_path: Optional[str] = None) -> FeatureStore:
     Construct a Feast FeatureStore using the configured repository path.
 
     The default repo path points at `services/feast/feature_repo`.
+
+    When ``REDIS_HOST`` or ``REDIS_PORT`` environment variables are set (e.g.
+    inside a Docker container), the Redis online-store connection string is
+    overridden so that the static ``feature_store.yaml`` does not need to
+    differ between local-dev and containerised environments.
     """
     path = _normalize_repo_path(repo_path)
-    return FeatureStore(repo_path=path)
+
+    fs = FeatureStore(repo_path=path)
+
+    # When REDIS_HOST / REDIS_PORT env vars are present, patch the online-store
+    # connection string on the already-loaded config.  Feast lazily initialises
+    # the online store, so mutating the config before the first query is safe.
+    redis_host = os.getenv("REDIS_HOST")
+    redis_port = os.getenv("REDIS_PORT")
+    if redis_host or redis_port:
+        host = redis_host or "localhost"
+        port = redis_port or "6379"
+        if hasattr(fs.config, "online_store") and hasattr(fs.config.online_store, "connection_string"):
+            fs.config.online_store.connection_string = f"{host}:{port}"
+
+    return fs
 
 
 def _entity_rows_key(entity_rows: Sequence[Dict[str, Any]]) -> Tuple[Tuple[Tuple[str, Any], ...], ...]:

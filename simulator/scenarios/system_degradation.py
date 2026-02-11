@@ -21,6 +21,7 @@ def _degraded_response(transaction: Dict[str, Any], fail_rate: float) -> Dict[st
             "status": 503,
             "latency_ms": random.uniform(500, 3000),
             "error": "timeout",
+            "timed_out": True,
             "blocked": False,
             "is_fraud": transaction.get("is_fraud", False),
         }
@@ -83,3 +84,9 @@ class SystemDegradationScenario(BaseScenario):
         self.results["error_rate"] = len(errors) / len(responses)
         fallbacks = [r for r in responses if r.get("latency_ms", 0) > 200]
         self.results["fallback_used_pct"] = (len(fallbacks) / len(responses)) * 100
+        timeouts = [
+            r
+            for r in responses
+            if r.get("timed_out") or r.get("error") == "timeout"
+        ]
+        self.results["timeout_count"] = len(timeouts)
