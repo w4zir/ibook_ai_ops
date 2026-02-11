@@ -53,6 +53,30 @@ class FraudBatchResponse(BaseModel):
     predictions: List[FraudResponse]
 
 
+class FraudFeedbackItem(BaseModel):
+    """Ground-truth feedback for a single prediction."""
+
+    user_id: Union[str, int] = Field(..., description="User identifier matching the original prediction.")
+    event_id: Union[str, int] = Field(..., description="Event identifier matching the original prediction.")
+    predicted_fraud: bool = Field(..., description="The model's prediction (is_fraud from the response).")
+    actual_fraud: bool = Field(..., description="Ground-truth: was the transaction actually fraudulent?")
+
+
+class FraudFeedbackRequest(BaseModel):
+    """Batch of ground-truth feedback items."""
+
+    feedbacks: List[FraudFeedbackItem]
+
+
+class FraudFeedbackResponse(BaseModel):
+    """Acknowledgement of feedback submission."""
+
+    accepted: int = Field(..., description="Number of feedback items accepted.")
+    failure_rate: float = Field(..., ge=0.0, le=1.0, description="Current failure rate in the monitoring window.")
+    window_samples: int = Field(..., ge=0, description="Number of samples in the current monitoring window.")
+    training_triggered: bool = Field(default=False, description="Whether auto-retraining was triggered.")
+
+
 @dataclass
 class FraudModelRuntime:
     """
@@ -86,6 +110,9 @@ __all__ = [
     "FraudResponse",
     "FraudBatchRequest",
     "FraudBatchResponse",
+    "FraudFeedbackItem",
+    "FraudFeedbackRequest",
+    "FraudFeedbackResponse",
     "FraudModelRuntime",
 ]
 

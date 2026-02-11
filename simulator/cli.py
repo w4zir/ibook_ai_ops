@@ -8,6 +8,7 @@ import click
 from simulator.scenarios.black_friday import BlackFridayScenario
 from simulator.scenarios.flash_sale import FlashSaleScenario
 from simulator.scenarios.fraud_attack import FraudAttackScenario
+from simulator.scenarios.fraud_drift_retrain import FraudDriftRetrainScenario
 from simulator.scenarios.gradual_drift import GradualDriftScenario
 from simulator.scenarios.mixed import MixedScenario
 from simulator.scenarios.normal_traffic import NormalTrafficScenario
@@ -20,6 +21,7 @@ SCENARIOS = {
     "flash-sale": FlashSaleScenario,
     "normal-traffic": NormalTrafficScenario,
     "fraud-attack": FraudAttackScenario,
+    "fraud-drift-retrain": FraudDriftRetrainScenario,
     "gradual-drift": GradualDriftScenario,
     "system-degradation": SystemDegradationScenario,
     "black-friday": BlackFridayScenario,

@@ -93,6 +93,30 @@ def test_fraud_prediction_api_logic() -> None:
     assert pred.is_fraud is True
 
 
+def test_fraud_feedback_api_logic(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test the /feedback endpoint records outcomes and returns metrics."""
+    from services.bentoml.services.fraud_detection.model import (
+        FraudFeedbackItem,
+        FraudFeedbackRequest,
+    )
+
+    # Reset the global tracker so we start fresh.
+    monkeypatch.setattr(fraud_service, "_FAILURE_TRACKER", None)
+    monkeypatch.setattr(fraud_service, "_ORCHESTRATOR", None)
+
+    feedback_req = FraudFeedbackRequest(
+        feedbacks=[
+            FraudFeedbackItem(user_id=1, event_id=2, predicted_fraud=True, actual_fraud=True),
+            FraudFeedbackItem(user_id=3, event_id=4, predicted_fraud=True, actual_fraud=False),
+            FraudFeedbackItem(user_id=5, event_id=6, predicted_fraud=False, actual_fraud=False),
+        ]
+    )
+    response = fraud_service.handle_feedback(feedback_req)
+    assert response.accepted == 3
+    assert response.failure_rate >= 0.0
+    assert response.window_samples >= 0
+
+
 def test_pricing_recommendation_api_logic() -> None:
     batch = pricing_service.PricingBatchRequest(
         requests=[

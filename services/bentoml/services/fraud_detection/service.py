@@ -6,8 +6,17 @@ BentoML service entrypoint for fraud detection.
 The BentoML-specific decorators are intentionally kept thin; the core request
 handling logic is implemented in pure Python functions so it can be exercised
 directly from unit tests without running a HTTP server.
+
+Auto-training integration
+-------------------------
+The service maintains a ``FailureTracker`` that records prediction outcomes
+reported via the ``/feedback`` endpoint.  When the failure rate over the
+configured monitoring window exceeds the threshold, an
+``AutoTrainingOrchestrator`` retrains the model in a background thread and
+hot-reloads the new model into production with zero downtime.
 """
 
+import logging
 from typing import Any, List
 
 try:  # pragma: no cover - import guard for environments without BentoML
@@ -29,9 +38,12 @@ from services.bentoml.services.fraud_detection.model import (
     FraudResponse,
     FraudBatchRequest,
     FraudBatchResponse,
+    FraudFeedbackRequest,
+    FraudFeedbackResponse,
     FraudModelRuntime,
 )
 
+logger = logging.getLogger(__name__)
 
 SERVICE_NAME = "fraud_detection"
 
@@ -52,6 +64,78 @@ def _get_runtime() -> FraudModelRuntime:
     if _RUNTIME is None:
         _RUNTIME = _load_model()
     return _RUNTIME
+
+
+def reload_model() -> None:
+    """
+    Hot-reload the fraud model from MLflow.
+
+    This atomically swaps the global runtime so that in-flight requests
+    complete with the old model and subsequent ones use the new one.
+    """
+    global _RUNTIME
+    logger.info("Hot-reloading fraud detection model…")
+    try:
+        new_runtime = _load_model()
+        _RUNTIME = new_runtime
+        logger.info("Model hot-reload complete.")
+    except Exception:
+        logger.exception("Model hot-reload failed; keeping existing model.")
+
+
+# ---------------------------------------------------------------------------
+# Auto-training wiring
+# ---------------------------------------------------------------------------
+
+_FAILURE_TRACKER = None
+_ORCHESTRATOR = None
+
+
+def _get_failure_tracker():
+    """Lazy-init the failure tracker and auto-training orchestrator."""
+    global _FAILURE_TRACKER, _ORCHESTRATOR
+    if _FAILURE_TRACKER is not None:
+        return _FAILURE_TRACKER
+
+    from common.auto_training import AutoTrainingOrchestrator, RetrainingResult
+    from common.config import get_config
+    from services.bentoml.common.failure_tracker import FailureTracker
+
+    cfg = get_config().auto_training
+
+    if not cfg.enabled:
+        return None
+
+    def _on_model_ready(result: RetrainingResult) -> None:
+        if result.success:
+            reload_model()
+            # Clear tracked outcomes so the window starts fresh with the new
+            # model – old failures are no longer relevant.
+            if _FAILURE_TRACKER is not None:
+                _FAILURE_TRACKER.reset()
+
+    _ORCHESTRATOR = AutoTrainingOrchestrator(
+        config=cfg,
+        on_model_ready=_on_model_ready,
+    )
+
+    def _on_threshold_breached(failure_rate: float, n_samples: int) -> None:
+        assert _ORCHESTRATOR is not None
+        _ORCHESTRATOR.run(failure_rate, n_samples)
+
+    _FAILURE_TRACKER = FailureTracker(
+        window_seconds=cfg.monitoring_window_seconds,
+        failure_rate_threshold=cfg.failure_rate_threshold,
+        cooldown_seconds=cfg.cooldown_seconds,
+        min_samples=cfg.min_samples,
+        on_threshold_breached=_on_threshold_breached,
+    )
+    return _FAILURE_TRACKER
+
+
+# ---------------------------------------------------------------------------
+# Request handling
+# ---------------------------------------------------------------------------
 
 
 def _normalize_entity_id(raw_id: Any) -> int:
@@ -168,6 +252,37 @@ def handle_predict(batch: FraudBatchRequest) -> FraudBatchResponse:
     return FraudBatchResponse(predictions=predictions)
 
 
+def handle_feedback(feedback_req: FraudFeedbackRequest) -> FraudFeedbackResponse:
+    """
+    Record ground-truth feedback for past predictions.
+
+    Each feedback item is recorded in the ``FailureTracker``. If the failure
+    rate crosses the configured threshold, auto-retraining is triggered
+    asynchronously.
+    """
+    tracker = _get_failure_tracker()
+    training_triggered = False
+
+    if tracker is not None:
+        was_training = tracker.training_in_progress
+        for fb in feedback_req.feedbacks:
+            tracker.record(
+                predicted_fraud=fb.predicted_fraud,
+                actual_fraud=fb.actual_fraud,
+            )
+        training_triggered = tracker.training_in_progress and not was_training
+        failure_rate, n_samples = tracker.get_failure_rate()
+    else:
+        failure_rate, n_samples = 0.0, 0
+
+    return FraudFeedbackResponse(
+        accepted=len(feedback_req.feedbacks),
+        failure_rate=failure_rate,
+        window_samples=n_samples,
+        training_triggered=training_triggered,
+    )
+
+
 def _health_payload(ok: bool, detail: str) -> dict:
     return {"ok": ok, "detail": detail}
 
@@ -206,6 +321,21 @@ if bentoml is not None and JSON is not None:  # pragma: no cover - HTTP layer
                 record_request(SERVICE_NAME, endpoint, http_status=200)
                 return response
 
+    @svc.api(input=JSON(pydantic_model=FraudFeedbackRequest), output=JSON(pydantic_model=FraudFeedbackResponse))
+    def feedback(req: FraudFeedbackRequest) -> FraudFeedbackResponse:
+        """Accept ground-truth feedback and track the failure rate."""
+        endpoint = "/feedback"
+        with track_latency(SERVICE_NAME, endpoint):
+            try:
+                response = handle_feedback(req)
+            except Exception as exc:
+                record_error(SERVICE_NAME, endpoint)
+                record_request(SERVICE_NAME, endpoint, http_status=500)
+                raise RuntimeError(f"fraud_detection.feedback failed: {exc}") from exc
+            else:
+                record_request(SERVICE_NAME, endpoint, http_status=200)
+                return response
+
     @svc.api(input=JSON(), output=JSON())
     def health(_: dict) -> dict:
         endpoint = "/healthz"
@@ -214,4 +344,3 @@ if bentoml is not None and JSON is not None:  # pragma: no cover - HTTP layer
             status = 200 if payload.get("ok") else 500
             record_request(SERVICE_NAME, endpoint, http_status=status)
             return payload
-

@@ -36,6 +36,7 @@ ibook-mlops/
 │   │   ├── normal_traffic.py       # Normal day operations
 │   │   ├── flash_sale.py           # Mega-event launch
 │   │   ├── fraud_attack.py         # Coordinated fraud
+│   │   ├── fraud_drift_retrain.py  # Novel fraud → auto-retrain
 │   │   ├── gradual_drift.py        # Seasonal changes
 │   │   ├── system_degradation.py   # Partial failures
 │   │   ├── ab_test.py              # A/B testing scenarios
@@ -1065,6 +1066,16 @@ Create these scenario files following the same pattern:
 - 1000+ fraudulent attempts
 - Tests: fraud detection recall, precision, response time
 
+**`simulator/scenarios/fraud_drift_retrain.py`**
+- Novel fraud patterns: **account takeover**, **synthetic identity**, **refund abuse**
+- These patterns produce feature distributions the original model has never seen
+- Account takeover: high `lifetime_purchases` + low `fraud_risk_score` (looks legitimate)
+- Synthetic identity: zero purchase history, near-zero risk score (brand-new accounts)
+- Refund abuse: moderate features indistinguishable from legitimate users
+- The model misses ~70% of novel fraud, causing failure rate to exceed the auto-training threshold
+- Tests: initial failure rate, training trigger, per-pattern recall
+- Run: `python -m simulator.cli run fraud-drift-retrain -o reports/fraud-drift-retrain-report.html`
+
 **`simulator/scenarios/gradual_drift.py`**
 - Simulates seasonal changes over weeks
 - User behavior shifts
@@ -1551,6 +1562,19 @@ make sim-run-all
 make sim-dashboard
 ```
 
+### Fraud Drift Auto-Retrain Scenario
+
+```bash
+# Run the fraud drift scenario to test auto-retraining
+python -m simulator.cli run fraud-drift-retrain -o reports/fraud-drift-retrain-report.html
+
+# Run in realtime mode against the live BentoML service
+python -m simulator.cli realtime fraud-drift-retrain --duration 120 --rps 50
+
+# Combine with other scenarios
+python -m simulator.cli mix --duration 30 --scenarios "normal-traffic:40,fraud-drift-retrain:30,fraud-attack:30"
+```
+
 ### Mix and realtime
 
 ```bash
@@ -1634,6 +1658,8 @@ Add to `.github/workflows/mlops-cicd.yml`:
 - [ ] Fraud detection recall > 95%
 - [ ] Graceful degradation during failures
 - [ ] Auto-retraining triggers on drift
+- [ ] Auto-retraining triggers on failure rate breach (novel fraud patterns)
+- [ ] Model hot-reload completes without downtime
 - [ ] Zero data loss during chaos events
 
 ---

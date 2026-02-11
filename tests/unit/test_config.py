@@ -43,3 +43,37 @@ def test_production_valid_when_required_fields_present(monkeypatch: pytest.Monke
     assert cfg.feast.bigquery_dataset == "ibook_mlops_feast"
     assert cfg.storage.gcs_bucket == "ibook-mlops-artifacts"
 
+
+# ---------------------------------------------------------------------------
+# AutoTrainingConfig
+# ---------------------------------------------------------------------------
+
+
+def test_auto_training_defaults(minimal_local_env):
+    cfg = load_config(env_file=None)
+    at = cfg.auto_training
+    assert at.enabled is True
+    assert at.failure_rate_threshold == 0.4
+    assert at.monitoring_window_seconds == 300
+    assert at.cooldown_seconds == 120
+    assert at.min_samples == 20
+    assert at.training_dataset_size == 512
+
+
+def test_auto_training_from_env(monkeypatch: pytest.MonkeyPatch, minimal_local_env):
+    monkeypatch.setenv("AUTO_TRAINING_ENABLED", "false")
+    monkeypatch.setenv("AUTO_TRAINING_FAILURE_RATE_THRESHOLD", "0.25")
+    monkeypatch.setenv("AUTO_TRAINING_MONITORING_WINDOW_SECONDS", "120")
+    monkeypatch.setenv("AUTO_TRAINING_COOLDOWN_SECONDS", "60")
+    monkeypatch.setenv("AUTO_TRAINING_MIN_SAMPLES", "50")
+    monkeypatch.setenv("AUTO_TRAINING_TRAINING_DATASET_SIZE", "256")
+
+    cfg = load_config(env_file=None)
+    at = cfg.auto_training
+    assert at.enabled is False
+    assert at.failure_rate_threshold == 0.25
+    assert at.monitoring_window_seconds == 120
+    assert at.cooldown_seconds == 60
+    assert at.min_samples == 50
+    assert at.training_dataset_size == 256
+

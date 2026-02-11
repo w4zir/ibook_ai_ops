@@ -12,6 +12,7 @@ from simulator.scenarios.base_scenario import BaseScenario
 from simulator.scenarios.black_friday import BlackFridayScenario
 from simulator.scenarios.flash_sale import FlashSaleScenario
 from simulator.scenarios.fraud_attack import FraudAttackScenario
+from simulator.scenarios.fraud_drift_retrain import FraudDriftRetrainScenario
 from simulator.scenarios.gradual_drift import GradualDriftScenario
 from simulator.scenarios.mixed import MixedScenario
 from simulator.scenarios.normal_traffic import NormalTrafficScenario
@@ -58,6 +59,7 @@ def test_transaction_generator_produces_valid_transactions() -> None:
         NormalTrafficScenario,
         FlashSaleScenario,
         FraudAttackScenario,
+        FraudDriftRetrainScenario,
         GradualDriftScenario,
         SystemDegradationScenario,
         BlackFridayScenario,
@@ -147,3 +149,61 @@ def test_mixed_scenario_custom_weights() -> None:
     assert "fraud-attack" in scenario._scenario_instances
     scenario.run()
     assert len(scenario.results.get("responses", [])) >= 1
+
+
+# ---------------------------------------------------------------------------
+# FraudDriftRetrainScenario
+# ---------------------------------------------------------------------------
+
+
+def test_fraud_drift_retrain_setup() -> None:
+    scenario = FraudDriftRetrainScenario()
+    scenario.setup()
+    assert scenario.event is not None
+    assert len(scenario.users) > 0
+    assert len(scenario.legitimate_users) > 0
+
+
+def test_fraud_drift_retrain_execute_completes() -> None:
+    scenario = FraudDriftRetrainScenario()
+    result = scenario.execute(duration_override_minutes=1)
+    assert "passed" in result
+    assert "metrics" in result
+    assert "duration_seconds" in scenario.results
+
+
+def test_fraud_drift_retrain_produces_novel_fraud() -> None:
+    scenario = FraudDriftRetrainScenario()
+    scenario.setup()
+    scenario.run()
+    scenario.teardown()
+
+    assert scenario.results["novel_fraud_count"] > 0
+    responses = scenario.results["responses"]
+    assert len(responses) > 0
+
+    # Should contain novel patterns.
+    patterns = {r.get("fraud_pattern") for r in responses}
+    assert "account_takeover" in patterns or "synthetic_identity" in patterns or "refund_abuse" in patterns
+
+
+def test_fraud_drift_retrain_high_initial_failure_rate() -> None:
+    """Novel fraud patterns should cause a high failure rate."""
+    scenario = FraudDriftRetrainScenario()
+    scenario.setup()
+    scenario.run()
+    scenario.teardown()
+
+    # The model is expected to miss most novel fraud → high failure rate.
+    initial_failure_rate = scenario.results.get("initial_failure_rate", 0)
+    assert initial_failure_rate > 0.2, f"Expected high failure rate, got {initial_failure_rate}"
+
+
+def test_fraud_drift_retrain_training_triggered() -> None:
+    """With enough novel fraud, auto-retraining should be triggered."""
+    scenario = FraudDriftRetrainScenario()
+    scenario.setup()
+    scenario.run()
+    scenario.teardown()
+
+    assert scenario.results.get("training_triggered") == 1.0

@@ -65,6 +65,61 @@ class StorageConfig(BaseModel):
     gcs_bucket: Optional[str] = Field(default=None)
 
 
+class AutoTrainingConfig(BaseModel):
+    """
+    Configuration for automatic model retraining triggered by prediction
+    failure rate exceeding a threshold.
+
+    When the fraud detection service observes a failure rate >= ``failure_rate_threshold``
+    over the most recent ``monitoring_window_seconds``, it spawns a background
+    retraining job. After training completes, the new model is hot-reloaded
+    into the serving runtime with zero downtime.
+    """
+
+    enabled: bool = Field(
+        default=True,
+        description="Master switch for the auto-training loop.",
+    )
+    failure_rate_threshold: float = Field(
+        default=0.4,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Fraction of incorrect predictions (false positives + false negatives) "
+            "that triggers automatic retraining. Range [0, 1]."
+        ),
+    )
+    monitoring_window_seconds: int = Field(
+        default=300,
+        ge=10,
+        description=(
+            "Sliding window (in seconds) over which the failure rate is computed. "
+            "Only predictions within the last ``monitoring_window_seconds`` are considered."
+        ),
+    )
+    cooldown_seconds: int = Field(
+        default=120,
+        ge=0,
+        description=(
+            "Minimum wait (in seconds) after a retraining run before another can "
+            "be triggered. Prevents rapid back-to-back retrains."
+        ),
+    )
+    min_samples: int = Field(
+        default=20,
+        ge=1,
+        description=(
+            "Minimum number of feedback samples in the window before the failure "
+            "rate is considered statistically meaningful."
+        ),
+    )
+    training_dataset_size: int = Field(
+        default=512,
+        ge=64,
+        description="Number of rows in the synthetic training dataset for retraining.",
+    )
+
+
 class AppConfig(BaseModel):
     environment: Literal["local", "production"] = Field(default="local")
 
@@ -76,6 +131,7 @@ class AppConfig(BaseModel):
     mlflow: MlflowConfig = Field(default_factory=MlflowConfig)
     airflow: AirflowConfig = Field(default_factory=AirflowConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
+    auto_training: AutoTrainingConfig = Field(default_factory=AutoTrainingConfig)
 
     @field_validator("environment", mode="before")
     @classmethod
@@ -176,6 +232,15 @@ def load_config(env_file: Optional[str] = None) -> AppConfig:
 
     airflow = AirflowConfig(webserver_url=_from_env("AIRFLOW_", "WEBSERVER_URL", "http://localhost:8080") or "http://localhost:8080")
 
+    auto_training = AutoTrainingConfig(
+        enabled=(_from_env("AUTO_TRAINING_", "ENABLED", "1") or "1").strip().lower() not in {"0", "false", "no"},
+        failure_rate_threshold=float(_from_env("AUTO_TRAINING_", "FAILURE_RATE_THRESHOLD", "0.4") or "0.4"),
+        monitoring_window_seconds=int(_from_env("AUTO_TRAINING_", "MONITORING_WINDOW_SECONDS", "300") or "300"),
+        cooldown_seconds=int(_from_env("AUTO_TRAINING_", "COOLDOWN_SECONDS", "120") or "120"),
+        min_samples=int(_from_env("AUTO_TRAINING_", "MIN_SAMPLES", "20") or "20"),
+        training_dataset_size=int(_from_env("AUTO_TRAINING_", "TRAINING_DATASET_SIZE", "512") or "512"),
+    )
+
     try:
         return AppConfig(
             environment=environment,
@@ -186,6 +251,7 @@ def load_config(env_file: Optional[str] = None) -> AppConfig:
             mlflow=mlflow,
             airflow=airflow,
             storage=storage,
+            auto_training=auto_training,
         )
     except ValidationError as e:
         # Re-raise with a message that’s easier to spot in logs/tests.

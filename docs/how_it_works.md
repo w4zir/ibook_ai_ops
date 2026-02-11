@@ -235,6 +235,97 @@ flowchart LR
     Check --> Retrain[trigger_retraining]
 ```
 
+### 6.1 Auto-Training on Failure Rate (Real-time Closed Loop)
+
+In addition to the batch-oriented Airflow monitoring, the platform supports **real-time auto-retraining** triggered by prediction failure rate. This is the staff-engineering approach to continuous model improvement: a closed-loop system that detects model degradation in production and automatically retrains and hot-reloads a new model without human intervention.
+
+**Architecture:**
+
+```mermaid
+flowchart TB
+    subgraph serving [BentoML Fraud Service]
+        Predict["/predict endpoint"]
+        Feedback["/feedback endpoint"]
+        Tracker[FailureTracker<br/>sliding window]
+        Runtime["FraudModelRuntime<br/>(hot-swappable)"]
+    end
+
+    subgraph retrain [Auto-Training Pipeline]
+        Orch[AutoTrainingOrchestrator]
+        Build[Build dataset]
+        Train[Train XGBoost + Optuna]
+        Eval[Evaluate vs baseline]
+        Register[Register in MLflow]
+        Reload[Hot-reload model]
+    end
+
+    Predict --> Runtime
+    Feedback --> Tracker
+    Tracker -->|"failure_rate >= X<br/>over last Y seconds"| Orch
+    Orch --> Build --> Train --> Eval --> Register --> Reload
+    Reload --> Runtime
+```
+
+**How it works:**
+
+1. The fraud detection service exposes a `/feedback` endpoint that accepts ground-truth labels for past predictions.
+2. Each feedback item (predicted vs. actual) is recorded in a **`FailureTracker`** — a thread-safe sliding window that maintains the last `Y` seconds of outcomes.
+3. After each feedback submission, the tracker computes the failure rate (false positives + false negatives) / total.
+4. When the failure rate crosses the configured threshold `X` with at least `min_samples` in the window:
+   - A background daemon thread triggers the **`AutoTrainingOrchestrator`**.
+   - The orchestrator builds a fresh training dataset, trains a new XGBoost model with Optuna tuning, and evaluates quality against a minimum baseline.
+   - If the new model passes quality checks, it is registered in MLflow and transitioned to the Production stage.
+   - The BentoML service **hot-reloads** the new model by atomically swapping the global `FraudModelRuntime` singleton.
+   - The failure tracker window is reset so the new model starts with a clean slate.
+5. A configurable **cooldown** prevents rapid back-to-back retrains.
+
+**Configuration** (`common/config.py` → `AutoTrainingConfig`):
+
+| Parameter | Env Var | Default | Description |
+|-----------|---------|---------|-------------|
+| `enabled` | `AUTO_TRAINING_ENABLED` | `true` | Master switch |
+| `failure_rate_threshold` | `AUTO_TRAINING_FAILURE_RATE_THRESHOLD` | `0.4` | Failure rate (0–1) that triggers retraining |
+| `monitoring_window_seconds` | `AUTO_TRAINING_MONITORING_WINDOW_SECONDS` | `300` | Sliding window size in seconds |
+| `cooldown_seconds` | `AUTO_TRAINING_COOLDOWN_SECONDS` | `120` | Minimum wait between retrains |
+| `min_samples` | `AUTO_TRAINING_MIN_SAMPLES` | `20` | Minimum feedback samples before rate is meaningful |
+| `training_dataset_size` | `AUTO_TRAINING_TRAINING_DATASET_SIZE` | `512` | Rows in retraining dataset |
+
+**Key design decisions:**
+
+- **Thread-safe sliding window** (`collections.deque` + `threading.Lock`) — bounded memory, O(1) append, lazy pruning.
+- **Callback-driven** — the tracker fires a callback in a daemon thread, never blocking the prediction hot path.
+- **Fail-safe** — if training or registration fails, the existing production model continues serving unchanged.
+- **Atomic hot-reload** — the global `_RUNTIME` reference is swapped in a single Python assignment; in-flight requests complete with the old model, subsequent ones use the new one.
+
+**Pseudo-code:**
+
+```
+STATE: outcomes = deque()  // sliding window of (timestamp, predicted, actual)
+STATE: last_trigger_time = 0
+STATE: training_in_progress = false
+
+ON /feedback (items):
+    FOR item IN items:
+        outcomes.append((now(), item.predicted, item.actual))
+    prune entries older than monitoring_window_seconds
+    IF len(outcomes) >= min_samples:
+        failures = count(o for o in outcomes if o.predicted != o.actual)
+        rate = failures / len(outcomes)
+        IF rate >= failure_rate_threshold
+           AND NOT training_in_progress
+           AND (now() - last_trigger_time) >= cooldown_seconds:
+            training_in_progress = true
+            last_trigger_time = now()
+            SPAWN THREAD:
+                dataset = build_synthetic_dataset(training_dataset_size)
+                result = train_fraud_model(dataset)
+                IF result.roc_auc >= 0.60 AND result.accuracy >= 0.65:
+                    register_model_in_mlflow(result.run_id)
+                    hot_reload_model()
+                    outcomes.clear()  // fresh window for new model
+                training_in_progress = false
+```
+
 ---
 
 ## 7. Orchestration (Airflow)
@@ -297,6 +388,7 @@ flowchart TB
         Normal[NormalTraffic]
         Flash[FlashSale]
         Fraud[FraudAttack]
+        FraudDrift["FraudDriftRetrain<br/>(novel fraud → auto-retrain)"]
         Drift[GradualDrift]
         Degradation[SystemDegradation]
         BlackFriday[BlackFriday]
@@ -337,7 +429,22 @@ FUNCTION execute():
 - **TransactionGenerator:** num_tickets, tier, price, payment_method, device/session, fraud_indicators (velocity, device_mismatch, geo_mismatch, time_anomaly), is_fraud.
 - **FraudSimulator:** Patterns (credential_stuffing, card_testing, bot_scalping) with configurable attack and success rates.
 
-**CLI:** `simulator.cli` — `list-scenarios`, `run <scenario> -o report.html`, `run-all -o reports/`.
+**Scenarios:**
+
+| Scenario | Purpose |
+|----------|---------|
+| `normal-traffic` | Baseline operations (~3% fraud) |
+| `flash-sale` | Mega-event launch (10K+ RPS) |
+| `fraud-attack` | Coordinated fraud (credential stuffing, card testing, bot scalping) |
+| `fraud-drift-retrain` | **Novel fraud patterns** (account takeover, synthetic identity, refund abuse) that cause model degradation and trigger auto-retraining |
+| `gradual-drift` | Seasonal behavior changes |
+| `system-degradation` | Partial service failures |
+| `black-friday` | Extreme load |
+| `mix` | Weighted combination of scenarios |
+
+**fraud-drift-retrain scenario details:** This scenario introduces three novel fraud vectors that the production model has never seen, producing feature distributions different from the original training data. Account takeover uses high `lifetime_purchases` with low `fraud_risk_score`; synthetic identity uses zero history; refund abuse uses moderate features that are hard to distinguish from legitimate users. The model misses ~70% of these novel patterns, causing the failure rate to breach the auto-training threshold and trigger retraining.
+
+**CLI:** `simulator.cli` — `list-scenarios`, `run <scenario> -o report.html`, `run-all -o reports/`, `realtime <scenario> --duration 60 --rps 100`.
 
 ---
 
@@ -356,5 +463,6 @@ FUNCTION execute():
 - **MlflowConfig** — tracking_uri, artifact root.
 - **AirflowConfig** — webserver URL.
 - **StorageConfig** — GCS bucket for production.
+- **AutoTrainingConfig** — failure_rate_threshold, monitoring_window_seconds, cooldown_seconds, min_samples, training_dataset_size (see section 6.1).
 
 Config is loaded via `get_config()` and used by feature utils, model utils, and BentoML common code so the same codebase works locally and in production with different env vars.
