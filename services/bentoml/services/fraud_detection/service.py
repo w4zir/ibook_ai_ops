@@ -78,7 +78,7 @@ def reload_model() -> None:
     try:
         new_runtime = _load_model()
         _RUNTIME = new_runtime
-        logger.info("Model hot-reload complete.")
+        logger.info("HOT LOAD: fraud detection model reloaded successfully.")
     except Exception:
         logger.exception("Model hot-reload failed; keeping existing model.")
 
@@ -105,6 +105,14 @@ def _get_failure_tracker():
 
     if not cfg.enabled:
         return None
+
+    logger.info(
+        "Auto-training config: threshold=%.0f%%, window=%ds, cooldown=%ds, min_samples=%d",
+        cfg.failure_rate_threshold * 100,
+        cfg.monitoring_window_seconds,
+        cfg.cooldown_seconds,
+        cfg.min_samples,
+    )
 
     def _on_model_ready(result: RetrainingResult) -> None:
         if result.success:

@@ -6,7 +6,7 @@ import signal
 import sys
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Type
+from typing import Any, Dict, List, Optional, Type
 
 from simulator.config import UserPersona, config
 from simulator.scenarios.base_scenario import BaseScenario
@@ -52,6 +52,9 @@ class RealtimeRunner:
         self.fraud_api_base_url = (fraud_api_base_url or config.fraud_api_base_url).rstrip("/")
         self.results: Dict[str, Any] = {}
         self._scenario: BaseScenario | None = None
+        # Feedback batch for auto-training metrics; flushed every progress interval.
+        self._feedback_batch: List[Dict[str, Any]] = []
+        self._last_feedback_stats: Optional[Dict[str, Any]] = None
 
     def _get_events_users_txn_gen(self) -> tuple[List[Dict], List[Dict], Any]:
         """Return (events or [single event], users, txn_gen) from the scenario."""
@@ -77,6 +80,8 @@ class RealtimeRunner:
 
         self._scenario = self.scenario_class()
         self._scenario.setup()
+        self._feedback_batch = []
+        self._last_feedback_stats = None
         events, users, txn_gen = self._get_events_users_txn_gen()
         responses: List[Dict[str, Any]] = []
         start = time.monotonic()
@@ -110,15 +115,36 @@ class RealtimeRunner:
             # Treat any non-2xx status as an error (including timeouts/transport failures).
             if status < 200 or status >= 300:
                 errors += 1
+            # Queue feedback for auto-training metrics (only for successful predict).
+            if 200 <= status < 300 and txn.get("user_id") is not None and txn.get("event_id") is not None:
+                self._feedback_batch.append({
+                    "user_id": txn["user_id"],
+                    "event_id": txn["event_id"],
+                    "predicted_fraud": resp.get("predicted_is_fraud", resp.get("blocked", False)),
+                    "actual_fraud": txn.get("is_fraud", False),
+                })
             next_send += interval
             if now - last_print >= 1.0:
                 elapsed = now - start
                 current_rps = len(responses) / elapsed if elapsed > 0 else 0
-                print(
-                    f"\r  elapsed={elapsed:.0f}s txns={len(responses)} rps={current_rps:.0f} errors={errors}   ",
-                    end="",
-                    flush=True,
+                # Flush feedback batch to service and get current failure-rate stats for display.
+                if self._feedback_batch:
+                    stats = self._send_feedback_batch(self._feedback_batch)
+                    if stats is not None:
+                        self._last_feedback_stats = stats
+                    self._feedback_batch.clear()
+                # Build progress line: txns/errors plus auto-training metrics when available.
+                line = (
+                    f"\r  elapsed={elapsed:.0f}s txns={len(responses)} rps={current_rps:.0f} errors={errors}"
                 )
+                if self._last_feedback_stats is not None:
+                    fr = self._last_feedback_stats.get("failure_rate", 0.0)
+                    n = self._last_feedback_stats.get("window_samples", 0)
+                    line += f" | failure_rate={fr * 100:.1f}% n={n}"
+                    if self._last_feedback_stats.get("training_triggered"):
+                        line += " [AUTO_TRAINING TRIGGERED]"
+                line += "   "
+                print(line, end="", flush=True)
                 last_print = now
 
         elapsed_total = time.monotonic() - start
@@ -213,3 +239,44 @@ class RealtimeRunner:
             # On unexpected exceptions, fall back to a synthetic non-error response so that
             # the simulator can still make progress; the caller will treat non-2xx as errors.
             return _synthetic_response(transaction)
+
+    def _send_feedback_batch(self, items: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """
+        Send a batch of (predicted, actual) feedback to the fraud service.
+        Returns dict with failure_rate, window_samples, training_triggered, or None if request fails.
+        """
+        if not items:
+            return None
+        try:
+            import json
+            import urllib.error
+            import urllib.request
+
+            payload = {
+                "feedbacks": [
+                    {
+                        "user_id": it["user_id"],
+                        "event_id": it["event_id"],
+                        "predicted_fraud": it["predicted_fraud"],
+                        "actual_fraud": it["actual_fraud"],
+                    }
+                    for it in items
+                ]
+            }
+            req = urllib.request.Request(
+                f"{self.fraud_api_base_url}/feedback",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                body = resp.read().decode()
+                data = json.loads(body) if body else {}
+                return {
+                    "failure_rate": float(data.get("failure_rate", 0.0)),
+                    "window_samples": int(data.get("window_samples", 0)),
+                    "training_triggered": bool(data.get("training_triggered", False)),
+                }
+        except Exception as e:
+            logger.debug("Feedback request failed: %s", e)
+            return None
