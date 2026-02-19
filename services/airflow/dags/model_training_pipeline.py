@@ -11,8 +11,9 @@ utilities in `common.model_utils`. It is designed to be:
 - **Test-friendly**: tasks operate on small, synthetic in-memory data so that
   unit tests and local runs stay fast.
 - **Production-shaped**: the task graph mirrors a real promotion workflow with
-  explicit training, evaluation, registration, and canary steps, even though
-  some are stubs for now.
+  explicit training, evaluation, registration (to Staging for canary), and
+  canary steps; deploy_canary, monitor_canary, and finalize_promotion remain
+  stubs for now.
 """
 
 import json
@@ -21,12 +22,15 @@ import os
 from datetime import datetime, timedelta
 from typing import Any, Dict
 
+import mlflow
 import numpy as np
 import pandas as pd
 from airflow import DAG
 from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import PythonOperator
+from mlflow.tracking import MlflowClient
 
+from common.config import get_config
 from common.model_utils import TrainingResult, build_fraud_training_dataframe, train_fraud_model
 
 try:
@@ -44,6 +48,11 @@ def _bentoml_base_url() -> str:
         or os.environ.get("FRAUD_API_BASE_URL")
         or "http://localhost:7001"
     ).rstrip("/")
+
+
+def _registered_model_name() -> str:
+    """Model name in MLflow Model Registry; align with BentoML's BENTOML_MODEL_NAME."""
+    return os.environ.get("BENTOML_MODEL_NAME", "fraud_detection")
 
 
 def _build_training_dataset(**context: Any) -> pd.DataFrame:
@@ -141,11 +150,8 @@ def _evaluate_against_baseline(**context: Any) -> Dict[str, Any]:
 
 def _register_and_mark_candidate(**context: Any) -> None:
     """
-    Stub for MLflow model registration.
-
-    `train_fraud_model` already logs the trained model under the active
-    experiment. In a future phase we will integrate with the MLflow Model
-    Registry here. For now we just log what would happen.
+    Register the trained model run in MLflow Model Registry and transition it
+    to Staging for canary. Only runs when the candidate passed baseline evaluation.
     """
     ti = context["ti"]
     evaluation: Dict[str, Any] = ti.xcom_pull(task_ids="evaluate_against_baseline") or {}
@@ -156,9 +162,28 @@ def _register_and_mark_candidate(**context: Any) -> None:
         )
         return
 
+    run_id = evaluation.get("run_id")
+    if not run_id:
+        raise ValueError("evaluate_against_baseline did not return run_id.")
+
+    cfg = get_config()
+    mlflow.set_tracking_uri(cfg.mlflow.tracking_uri)
+    model_name = _registered_model_name()
+    model_uri = f"runs:/{run_id}/model"
+
+    client = MlflowClient()
+    mv = mlflow.register_model(model_uri=model_uri, name=model_name)
+    version = int(mv.version)
+    client.transition_model_version_stage(
+        name=model_name,
+        version=str(version),
+        stage="Staging",
+    )
     logging.info(
-        "Model run_id=%s passed baseline; would register/transition to 'Staging' in MLflow.",
-        evaluation.get("run_id"),
+        "Registered model run_id=%s as %s version %s and transitioned to Staging.",
+        run_id,
+        model_name,
+        version,
     )
 
 

@@ -1,13 +1,13 @@
 {
-  "drift_score": 0.8722726523403361,
+  "drift_score": 1.0,
   "column_scores": {
     "user_txn_count_1h": 1.0,
-    "user_txn_amount_1h": 0.48909060936134463,
+    "user_txn_amount_1h": 1.0,
     "user_distinct_events_1h": 1.0,
     "user_avg_amount_24h": 1.0
   },
   "source": "feature_pipeline",
-  "run_ts": "2026-02-18T20:28:50.244987Z",
+  "run_ts": "2026-02-19T05:34:34.149528Z",
   "reference_source": "seed_regenerated",
   "target_window_hours": 24
 }

@@ -84,6 +84,55 @@ def test_ml_monitoring_branch_returns_trigger_or_skip() -> None:
     assert out == "skip_retraining"
 
 
+def test_register_and_mark_candidate_skips_when_not_accepted() -> None:
+    """When evaluation is not accepted, no MLflow registration or transition is performed."""
+    import unittest.mock as mock
+    from services.airflow.dags.model_training_pipeline import _register_and_mark_candidate
+
+    class FakeTI:
+        def xcom_pull(self, task_ids: str, **kwargs: object) -> dict:
+            return {"accepted": False, "run_id": "run-123"}
+
+    with mock.patch("services.airflow.dags.model_training_pipeline.mlflow") as mlflow_mock:
+        with mock.patch("services.airflow.dags.model_training_pipeline.get_config") as get_cfg:
+            get_cfg.return_value = mock.MagicMock(mlflow=mock.MagicMock(tracking_uri="http://mlflow:5000"))
+            _register_and_mark_candidate(ti=FakeTI())
+        mlflow_mock.register_model.assert_not_called()
+
+
+def test_register_and_mark_candidate_registers_and_transitions_to_staging_when_accepted() -> None:
+    """When accepted, run is registered in MLflow and version is transitioned to Staging."""
+    import unittest.mock as mock
+    from services.airflow.dags.model_training_pipeline import _register_and_mark_candidate
+
+    class FakeTI:
+        def xcom_pull(self, task_ids: str, **kwargs: object) -> dict:
+            return {"accepted": True, "run_id": "run-456"}
+
+    fake_mv = mock.MagicMock()
+    fake_mv.version = "2"
+
+    with mock.patch("services.airflow.dags.model_training_pipeline.get_config") as get_cfg:
+        get_cfg.return_value = mock.MagicMock(mlflow=mock.MagicMock(tracking_uri="http://mlflow:5000"))
+        with mock.patch("services.airflow.dags.model_training_pipeline.mlflow") as mlflow_mock:
+            mlflow_mock.register_model.return_value = fake_mv
+            with mock.patch("services.airflow.dags.model_training_pipeline.MlflowClient") as client_cls:
+                mock_client = mock.MagicMock()
+                client_cls.return_value = mock_client
+                _register_and_mark_candidate(ti=FakeTI())
+
+    mlflow_mock.set_tracking_uri.assert_called_once_with("http://mlflow:5000")
+    mlflow_mock.register_model.assert_called_once_with(
+        model_uri="runs:/run-456/model",
+        name="fraud_detection",
+    )
+    mock_client.transition_model_version_stage.assert_called_once_with(
+        name="fraud_detection",
+        version="2",
+        stage="Staging",
+    )
+
+
 def test_feature_pipeline_drift_uses_seed_reference() -> None:
     """Drift check uses seed-derived reference (no reference path; _build_seed_reference_features)."""
     from services.airflow.dags.feature_engineering_pipeline import (
